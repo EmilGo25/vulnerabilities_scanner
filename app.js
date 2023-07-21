@@ -4,10 +4,11 @@ app.use(express.json())
 const port = 3000
 const axios = require('axios');
 const {create} = require("axios");
-const apiSecret='157Xl9eY15gg15zXoNeVINeR16HXmden16jXmNeZ150sINeQ15TXkdeq15k='
+require('dotenv').config()
+const apiSecret=process.env.API_SECRET
 let inMemoryToken = null;
 const createToken = async ()=>{
-    const tokenRes= await axios.post('http://74.234.252.116:8000/api/token/create',{"apiKey":apiSecret});
+    const tokenRes= await axios.post(process.env.CREATE_TOKEN_URL,{"apiKey":apiSecret});
     inMemoryToken=tokenRes.data;
     return tokenRes.data;
 }
@@ -28,7 +29,7 @@ const getVulnerabilities = async ()=> {
     let vulnerabilitiesPage=1;
 
     while(true){
-        const vulnerabilitiesRes= await axios.get(`http://74.234.252.116:8000/api/vulnerabilities?page=${vulnerabilitiesPage}&size=${vulnerabilitiesPageSize}`,{headers:{'Authorization':`Bearer ${inMemoryToken}`}});
+        const vulnerabilitiesRes= await axios.get(`${process.env.VULNERABILITIES_URL}?page=${vulnerabilitiesPage}&size=${vulnerabilitiesPageSize}`,{headers:{'Authorization':`Bearer ${inMemoryToken}`}});
         const vulnerabilitiesArr= vulnerabilitiesRes.data || []
         if(vulnerabilitiesArr.length===0){
             break;
@@ -44,9 +45,38 @@ app.get('/vulnerabilities',async (req,res)=>{
         res.status(401).send('Unauthorized')
     }else{
         const vulnerabilities=await getVulnerabilities();
-        res.send(vulnerabilities)
-    }
 
+            res.send(vulnerabilities)
+    }
+})
+
+app.get('/vulnerabilities/endpoint',async (req,res)=>{
+    if(!inMemoryToken){
+        res.status(401).send('Unauthorized')
+    }else{
+        const vulnerabilities=await getVulnerabilities();
+        const endpointVuls={}
+        vulnerabilities.forEach(vulnerabilityItem=>{
+            const endpointId=vulnerabilityItem.endpoint_id;
+            const endpointCVE=vulnerabilityItem.CVE
+            if(endpointCVE){
+                if(!endpointVuls[endpointId]){
+                    endpointVuls[endpointId]=[endpointCVE]
+                }else{
+                    endpointVuls[endpointId].push(endpointCVE)
+                }
+            }
+        })
+
+        const result= Object.keys(endpointVuls).map(endpointID=>{
+            return {
+                ip:endpointID,
+                vulnerabilities:endpointVuls[endpointID]
+            }
+        })
+
+        res.send(result)
+    }
 })
 
 
@@ -54,12 +84,6 @@ app.get('/vulnerabilities',async (req,res)=>{
 app.post('/login',async (req,res)=>{
   const token=await getToken();
   res.send(token)
-})
-
-app.get('/api-json',(req,res)=>{
-    const apiJsonRes= axios.get('http://74.234.252.116:8000/api-json').then(res=>{
-        console.log('res.data',res.data)
-    })
 })
 
 app.listen(port, () => {
